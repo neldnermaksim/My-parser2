@@ -46,5 +46,5 @@ def get_fact():
 # Запуск сервера с правильным портом (для Railway)
 if __name__ == "__main__":
     import uvicorn
-    port = int(os.environ.get("PORT", 8000))  # Берём порт из переменной окружения или 8000
+    port = int(os.environ.get("PORT", 8080))  # Берём порт из переменной окружения или 8000
     uvicorn.run(app, host="0.0.0.0", port=port)
