@@ -1,4 +1,3 @@
-# Импортируем библиотеки
 from fastapi import FastAPI
 import requests
 from bs4 import BeautifulSoup
@@ -12,38 +11,46 @@ app = FastAPI()
 def read_root():
     return {"message": "Парсер работает!"}
 
-# Маршрут парсинга новостей с Hacker News
+# Маршрут для парсинга новостей по категории
 @app.get("/parse")
-def parse_news():
-    url = 'https://news.ycombinator.com/'  # Сайт для парсинга
+def parse_news(category: str):
+    # Базовый URL для BBC News
+    base_url = "https://www.bbc.com/news"
+    
+    # Словарь категорий
+    categories = {
+        "world": "/world",
+        "technology": "/technology",
+        "business": "/business",
+        "science": "/science",
+        "health": "/health",
+    }
+
+    # Проверяем, если категория существует
+    if category not in categories:
+        return {"error": "Invalid category. Available categories: world, technology, business, science, health."}
+
+    # Формируем URL для парсинга
+    url = base_url + categories[category]
+    
+    # Запрашиваем страницу
     response = requests.get(url)
+    if response.status_code != 200:
+        return {"error": f"Failed to retrieve news. Status code: {response.status_code}"}
+
+    # Парсим HTML
     soup = BeautifulSoup(response.text, 'html.parser')
 
-    titles = soup.find_all('a', class_='storylink')  # Ищем заголовки новостей
-    news_list = [title.text for title in titles]
+    # Ищем все заголовки новостей
+    titles = soup.find_all('h3')
+    
+    # Собираем заголовки в список
+    news_list = [title.get_text(strip=True) for title in titles]
 
-    return {"news": news_list}
+    # Возвращаем список новостей
+    return {"category": category, "news": news_list}
 
-# Дополнительный интересный API: получить случайную шутку
-@app.get("/joke")
-def get_joke():
-    joke_url = "https://official-joke-api.appspot.com/random_joke"
-    joke_response = requests.get(joke_url).json()
-    return {
-        "setup": joke_response["setup"],
-        "punchline": joke_response["punchline"]
-    }
-
-# Дополнительный интересный API: получить случайный факт
-@app.get("/fact")
-def get_fact():
-    fact_url = "https://uselessfacts.jsph.pl/random.json?language=en"
-    fact_response = requests.get(fact_url).json()
-    return {
-        "fact": fact_response["text"]
-    }
-
-# Запуск сервера с правильным портом (для Railway)
+# Запуск сервера с правильным портом
 if __name__ == "__main__":
     import uvicorn
     port = int(os.environ.get("PORT", 8080))  # Берём порт из переменной окружения или 8000
