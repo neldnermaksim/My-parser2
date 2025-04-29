@@ -1,43 +1,65 @@
-from fastapi import FastAPI, Query
-import requests
-from bs4 import BeautifulSoup
-import uvicorn
+from fastapi import FastAPI
+from selenium import webdriver
+from selenium.webdriver.chrome.options import Options
+from selenium.webdriver.support.ui import WebDriverWait
+from selenium.webdriver.support import expected_conditions as EC
+from selenium.webdriver.common.by import By
+from lxml import html
+import os
 
 app = FastAPI()
 
 @app.get("/")
 def root():
-    return {"message": "Парсер цитат на порту 8080 готов!"}
+    return {"message": "API для парсинга BingX P2P работает!"}
 
-@app.get("/quotes")
-def get_quotes(author: str = Query(None), limit: int = Query(10)):
-    url = "http://quotes.toscrape.com"
-    response = requests.get(url)
+@app.get("/p2p")
+def get_p2p_data():
+    url = "https://bingx.paycat.com/ru-ru/p2p/self-selection?fiat=KZT&type=1"
+
+    chrome_options = Options()
+    chrome_options.add_argument("--headless")
+    chrome_options.add_argument("--no-sandbox")
+    chrome_options.add_argument("--disable-dev-shm-usage")
+
+    # Для Railway нужно указать путь к драйверу явно
+    driver = webdriver.Chrome(options=chrome_options)
+
+    try:
+        driver.get(url)
+
+        wait = WebDriverWait(driver, 30)
+        wait.until(EC.presence_of_element_located((By.CLASS_NAME, "nickname")))
+
+        page_source = driver.page_source
+        tree = html.fromstring(page_source)
+
+        nicknames = tree.xpath('//span[contains(@class, "ellipsis") and contains(@class, "nickname")]/text()')
+        amounts = tree.xpath('//span[contains(@class, "rubik-font") and contains(@class, "amount") and contains(text(), "USDT")]/text()')
+        price_ranges = tree.xpath('//span[contains(@class, "c2c-calc-formula") and contains(@class, "amount")]/text()')
+        prices = tree.xpath('//div[contains(@class, "rubik-font") and contains(@class, "format-price")]/text()')
+        payments = [block.xpath('.//span[contains(@class, "paymethod")]/text()') for block in tree.xpath('//div[contains(@class, "payments-list")]')]
+
+        data = []
+        for i, (nickname, amount, price_range, price, payment_methods) in enumerate(zip(nicknames, amounts, price_ranges, prices, payments)):
+            data.append({
+                "nickname": nickname,
+                "price": price,
+                "available": amount,
+                "limits": price_range,
+                "payment_methods": payment_methods
+            })
+
+        return {"data": data}
     
-    if response.status_code != 200:
-        return {"error": "Не удалось получить страницу"}
+    except Exception as e:
+        return {"error": str(e)}
+    
+    finally:
+        driver.quit()
 
-    soup = BeautifulSoup(response.text, "html.parser")
-    quotes_html = soup.find_all("div", class_="quote")
-
-    quotes = []
-    for quote_block in quotes_html:
-        text = quote_block.find("span", class_="text").get_text(strip=True)
-        quote_author = quote_block.find("small", class_="author").get_text(strip=True)
-
-        if author and author.lower() not in quote_author.lower():
-            continue  # Пропустить, если автор не совпадает
-
-        quotes.append({
-            "author": quote_author,
-            "quote": text
-        })
-
-        if len(quotes) >= limit:
-            break
-
-    return {"quotes": quotes}
-
-# Запуск на Railway через порт 8080
+# Запуск на Railway (порт 8080)
 if __name__ == "__main__":
+    import uvicorn
     uvicorn.run(app, host="0.0.0.0", port=8080)
+
